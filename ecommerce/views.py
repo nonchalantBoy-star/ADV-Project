@@ -10,6 +10,7 @@ from .serializers import (
 from django.contrib.auth.hashers import check_password
 from django.shortcuts import get_object_or_404
 from decimal import Decimal
+import secrets # For generating secure random transaction hashes
 
 # --- AUTHENTICATION ---
 
@@ -206,11 +207,15 @@ def payWithCrypto(request, orderId):
     
     serializer = CryptoPaymentSerializer(data=request.data)
     if serializer.is_valid():
+        # Generate a simulated 64-character blockchain transaction hash
+        simulated_hash = secrets.token_hex(32)
+        
         # Automatically set the amount in USDT (1:1 ratio with USD/Price)
         payment = serializer.save(
             order=order, 
             crypto_amount=order.total_price, 
-            crypto_currency='USDT'
+            crypto_currency='USDT',
+            transaction_hash=simulated_hash
         )
         order.payment_method = 'crypto'
         order.save()

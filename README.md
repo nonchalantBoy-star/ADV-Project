@@ -9,7 +9,7 @@ A robust Django REST Framework (DRF) backend for a simplified e-commerce platfor
 - **Shopping Cart**: Automated cart creation on signup, with persistent storage of items.
 - **Stock Management**: Real-time stock deduction upon order creation with insufficient stock prevention.
 - **Order System**: converts cart items into finalized orders with price history preservation.
-- **Crypto Payments**: Automated USDT payment flow (amount matches order total automatically).
+- **Crypto Payments**: Automated USDT payment flow (amount and transaction hash generated automatically).
 - **API Documentation**: Interactive documentation provided by Swagger (drf-spectacular).
 
 ## 🛠️ Technology Stack
