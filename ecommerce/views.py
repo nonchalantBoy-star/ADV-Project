@@ -13,6 +13,7 @@ from decimal import Decimal
 
 # --- AUTHENTICATION ---
 
+# Registration of a new user
 @extend_schema(request=RegisterSerializer)
 @api_view(['POST'])
 def register(request):
@@ -22,6 +23,7 @@ def register(request):
         return Response({"message": "User created", "user_id": user.id}, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+# User Login
 @extend_schema(request=LoginSerializer)
 @api_view(['POST'])
 def login(request):
@@ -37,6 +39,7 @@ def login(request):
     except User.DoesNotExist:
         return Response({"error": "Invalid email"}, status=status.HTTP_404_NOT_FOUND)
 
+    # Password hash verification
     if not check_password(password, user.hashedPassword):
         return Response({"error": "Invalid password"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -45,18 +48,21 @@ def login(request):
 
 # --- PRODUCTS ---
 
+# Get all products (Public)
 @api_view(['GET'])
 def getAllProducts(request):
     products = Product.objects.all()
     serializer = ProductSerializer(products, many=True)
     return Response(serializer.data)
 
+# Get a specific product by its ID (Public)
 @api_view(['GET'])
 def getProduct(request, productId):
     product = get_object_or_404(Product, id=productId)
     serializer = ProductSerializer(product)
     return Response(serializer.data)
 
+# Create a new product (Admin)
 @extend_schema(request=ProductSerializer)
 @api_view(['POST'])
 def createProduct(request):
@@ -66,6 +72,7 @@ def createProduct(request):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+# Update an existing product (Admin)
 @extend_schema(request=ProductSerializer)
 @api_view(['PATCH'])
 def updateProduct(request, productId):
@@ -76,6 +83,7 @@ def updateProduct(request, productId):
         return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+# Delete a product (Admin)
 @api_view(['DELETE'])
 def deleteProduct(request, productId):
     product = get_object_or_404(Product, id=productId)
@@ -84,6 +92,7 @@ def deleteProduct(request, productId):
 
 # --- CART ---
 
+# Get the contents of a user's cart
 @api_view(['GET'])
 def getCart(request, userId):
     user = get_object_or_404(User, id=userId)
@@ -91,6 +100,7 @@ def getCart(request, userId):
     serializer = CartSerializer(cart)
     return Response(serializer.data)
 
+# Add an item to the cart (or increase quantity if already present)
 @extend_schema(request=CartItemSerializer)
 @api_view(['POST'])
 def addCartItem(request, userId):
@@ -99,10 +109,10 @@ def addCartItem(request, userId):
     
     serializer = CartItemSerializer(data=request.data)
     if serializer.is_valid():
-        # Check if item already exists in cart
         product = serializer.validated_data['product']
         quantity = serializer.validated_data['quantity']
         
+        # Intelligent duplicate handling in the cart
         item, item_created = CartItem.objects.get_or_create(cart=cart, product=product, defaults={'quantity': quantity})
         if not item_created:
             item.quantity += quantity
@@ -111,12 +121,14 @@ def addCartItem(request, userId):
         return Response(CartItemSerializer(item).data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+# Remove a specific item from the cart
 @api_view(['DELETE'])
 def deleteCartItem(request, userId, itemId):
     item = get_object_or_404(CartItem, id=itemId, cart__user_id=userId)
     item.delete()
     return Response({"message": "Item removed from cart"}, status=status.HTTP_200_OK)
 
+# Completely clear a user's cart
 @api_view(['DELETE'])
 def clearCart(request, userId):
     cart = get_object_or_404(Cart, user_id=userId)
@@ -125,6 +137,7 @@ def clearCart(request, userId):
 
 # --- ORDERS & PAYMENTS ---
 
+# Convert cart into an order and deduct stock
 @api_view(['POST'])
 def createOrder(request, userId):
     user = get_object_or_404(User, id=userId)
@@ -133,7 +146,7 @@ def createOrder(request, userId):
     if not cart.items.exists():
         return Response({"error": "Cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
     
-    # 1. Vérification des stocks d'abord
+    # 1. Stock verification for ALL products in the cart
     for item in cart.items.all():
         if item.product.stock < item.quantity:
             return Response({
@@ -141,12 +154,11 @@ def createOrder(request, userId):
                 "available_stock": item.product.stock
             }, status=status.HTTP_400_BAD_REQUEST)
 
-    # 2. Calcul du prix total et déduction des stocks
+    # 2. Total price calculation and effective stock deduction
     total_price = 0
     order_items_to_create = []
     
     for item in cart.items.all():
-        # Déduire le stock
         item.product.stock -= item.quantity
         item.product.save()
         
@@ -157,9 +169,10 @@ def createOrder(request, userId):
             'price': item.product.price
         })
 
-    # 3. Création de la commande
+    # 3. Creation of the main order
     order = Order.objects.create(user=user, total_price=total_price, status='pending')
     
+    # 4. Creation of order detail lines
     for oi in order_items_to_create:
         OrderItem.objects.create(
             order=order,
@@ -168,17 +181,19 @@ def createOrder(request, userId):
             price=oi['price']
         )
     
-    # 4. Vider le panier
+    # 5. Clear cart after successful order creation
     cart.items.all().delete()
     
     return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
+# See all orders for a user
 @api_view(['GET'])
 def getOrders(request, userId):
     orders = Order.objects.filter(user_id=userId)
     serializer = OrderSerializer(orders, many=True)
     return Response(serializer.data)
 
+# Initiate a cryptocurrency payment for an order
 @extend_schema(
     request=CryptoPaymentSerializer,
     responses={201: CryptoPaymentSerializer}
@@ -189,8 +204,6 @@ def payWithCrypto(request, orderId):
     if order.status != 'pending':
         return Response({"error": "Order is already processed"}, status=400)
     
-    # Simulate crypto processing
-    # In a real app, we would calculate amount based on actual rate
     serializer = CryptoPaymentSerializer(data=request.data)
     if serializer.is_valid():
         payment = serializer.save(order=order)
@@ -199,15 +212,16 @@ def payWithCrypto(request, orderId):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+# Simulate confirmation of a crypto payment (Blockchain Confirmation)
 @api_view(['POST'])
 def confirmCryptoPayment(request, orderId):
     order = get_object_or_404(Order, id=orderId)
     payment = get_object_or_404(CryptoPayment, order=order)
     
-    # Simulate confirmation from blockchain
     payment.is_confirmed = True
     payment.save()
     
+    # Update order status once paid
     order.status = 'paid'
     order.save()
     
