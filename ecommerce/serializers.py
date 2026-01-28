@@ -75,5 +75,5 @@ class CryptoPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = CryptoPayment
         fields = '__all__'
-        read_only_fields = ['id', 'order', 'is_confirmed', 'created_at'] # order handled via URL
+        read_only_fields = ['id', 'order', 'crypto_amount', 'crypto_currency', 'is_confirmed', 'created_at'] # Auto-handled
     

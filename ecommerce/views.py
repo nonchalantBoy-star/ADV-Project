@@ -193,7 +193,7 @@ def getOrders(request, userId):
     serializer = OrderSerializer(orders, many=True)
     return Response(serializer.data)
 
-# Initiate a cryptocurrency payment for an order
+# Initiate a cryptocurrency payment for an order (Fixed to USDT)
 @extend_schema(
     request=CryptoPaymentSerializer,
     responses={201: CryptoPaymentSerializer}
@@ -206,7 +206,12 @@ def payWithCrypto(request, orderId):
     
     serializer = CryptoPaymentSerializer(data=request.data)
     if serializer.is_valid():
-        payment = serializer.save(order=order)
+        # Automatically set the amount in USDT (1:1 ratio with USD/Price)
+        payment = serializer.save(
+            order=order, 
+            crypto_amount=order.total_price, 
+            crypto_currency='USDT'
+        )
         order.payment_method = 'crypto'
         order.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
